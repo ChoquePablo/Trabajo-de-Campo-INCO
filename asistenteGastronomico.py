@@ -16,6 +16,60 @@ class Hecho(Fact):
 class AsesorVirtualGastronomico(KnowledgeEngine):
     
     # ========================================================
+    # FLUJO PRINCIPAL: COMPRA Y RENDIMIENTO DE CARNE (R1 - R10)
+    # ========================================================
+
+    @Rule(Hecho(codigo='A'), Hecho(codigo='B'), salience=100)
+    def r1_comprar_pieza_entera(self):
+        print("[R1] Lunes/Martes/Miércoles y oferta: Se compra pieza entera.")
+        self.declare(Hecho(codigo='D'))
+
+    @Rule(Hecho(codigo='D'), salience=90)
+    def r2_ingrediente_versatil(self):
+        print("[R2] La pieza comprada se clasifica como 'ingrediente versátil'.")
+        self.declare(Hecho(codigo='E'))
+
+    @Rule(Hecho(codigo='E'), salience=80)
+    def r3_planificar_dos_platos(self):
+        print("[R3] Ingrediente versátil: Se planifican al menos dos platos diferentes.")
+        self.declare(Hecho(codigo='F'))
+
+    @Rule(Hecho(codigo='G'), salience=95)
+    def r4_ayudante_ausente(self):
+        print("[R4] La ayudante avisa que no asiste.")
+        self.declare(Hecho(codigo='H'))
+
+    @Rule(Hecho(codigo='H'), salience=85)
+    def r5_retraso_inicio(self):
+        print("[R5] Cocina sucia: Se retrasa el inicio de la elaboración (Lucía limpia sola).")
+        self.declare(Hecho(codigo='I'))
+
+    @Rule(Hecho(codigo='F'), Hecho(codigo='I'), salience=75)
+    def r6_menu_demasiado_largo(self):
+        print("[R6] Dos platos + retraso: El menú requiere demasiado tiempo de elaboración.")
+        self.declare(Hecho(codigo='J'))
+
+    @Rule(Hecho(codigo='J'), salience=65)
+    def r7_descartar_menu_estandar(self):
+        print("[R7] Se descarta el menú diario estándar (ej. el guiso).")
+        self.declare(Hecho(codigo='K'))
+
+    @Rule(Hecho(codigo='K'), salience=55)
+    def r8_activar_contingencia(self):
+        print("[R8] Se activa el protocolo de contingencia por imprevisto/demora.")
+        self.declare(Hecho(codigo='L'))
+
+    @Rule(Hecho(codigo='D'), salience=70)
+    def r9_congelar_carne(self):
+        print("[R9] Se congela la carne un poco para filetear y reducir desperdicios.")
+        self.declare(Hecho(codigo='M'))
+
+    @Rule(Hecho(codigo='M'), salience=60)
+    def r10_filetear_carne(self):
+        print("[R10] Se filetea la carne en la cocina.")
+        self.declare(Hecho(codigo='N'))
+
+    # ========================================================
     # CONFLICTO: L (Contingencia por demora)
     # Orden de ejecución: R12 -> R11 -> R18 -> R19
     # ========================================================
@@ -60,7 +114,7 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         self.declare(Hecho(codigo='AB'))
 
     # Esta regla exige dos hechos simultáneos para dispararse
-    @Rule(Hecho(codigo='O'), Hecho(codigo='Q'), salience=10)
+    @Rule(Hecho(codigo='O'), Hecho(codigo='Q'), salience=15)
     def r15_entrega_menu_rapido(self):
         print("[R15] Platos y guarnición listos: El cliente recibe el menú rápido.")
         self.declare(Hecho(codigo='S'))
@@ -84,9 +138,12 @@ if __name__ == "__main__":
     motor = AsesorVirtualGastronomico()
     motor.reset()
     
-    # Simulamos que ocurre el imprevisto (Hecho L)
-    print(">> Ingresando Hecho Inicial: L (Contingencia por demora)\n")
-    motor.declare(Hecho(codigo='L'))
+    # NOTA: Para probar el nuevo flujo R1-R10, ahora debemos declarar A, B y G
+    # (Lunes/Martes/Miércoles, oferta de carne y ausencia de ayudante).
+    print(">> Ingresando Hechos Iniciales: A (Es Lunes), B (Hay oferta), G (Falta ayudante)\n")
+    motor.declare(Hecho(codigo='A'))
+    motor.declare(Hecho(codigo='B'))
+    motor.declare(Hecho(codigo='G'))
     
     # El motor resuelve las reglas encadenadas de forma metódica
     motor.run()
