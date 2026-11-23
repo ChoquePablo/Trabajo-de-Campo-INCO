@@ -74,6 +74,11 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         print("[R3] Ingrediente versátil: Se planifican al menos dos platos diferentes.")
         self.declare(Hecho(codigo='F'))
 
+    @Rule(Hecho(codigo='E'), salience=10)
+    def r26_deshuesar_pollo(self):
+        print("[R3] Ingrediente versátil: Se deshuesa una parte hoy y se guarda el resto.")
+        self.declare(Hecho(codigo='AH'))
+        self.declare(Hecho(codigo='AI'))
 
     # ========================================================
     # CONFLICTO: L (Contingencia por demora)
@@ -110,6 +115,48 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         self.declare(Hecho(codigo='Q'))
 
     # ========================================================
+    # ENCADENAMIENTO DE AUMENTO DE GANANCIA POR CORTE DE CARNE (N -> R)
+    # ========================================================
+    
+    @Rule(Hecho(codigo='N'))
+    def r14_arroz_sin_verduras(self):
+        print("[R14] Se filete la carne en la cocina: el margen de ganancia aumenta.")
+        self.declare(Hecho(codigo='R'))
+
+    # ========================================================
+    # ENCADENAMIENTO DE CLIMA CÁLIDO (T -> U y V)
+    # ========================================================
+    @Rule(Hecho(codigo='T'))
+    def r26_deshuesar_pollo(self):
+        print("[R16] Clima cálido: Se descartan menús calientes y se sugieren comidas frescas.")
+        self.declare(Hecho(codigo='U'))
+        self.declare(Hecho(codigo='V'))
+
+    # ========================================================
+    # CONFLICTO: W (Cliente tiene restricciones alimentarias)
+    # Orden de ejecución: R17 -> R24
+    # ========================================================
+        
+    @Rule(Hecho(codigo='W'), salience=20)
+    def r17_encender_plancha(self):
+        print("[R17] Cliente tiene restricciones alimentarias: se prepara menú paralelo básico.")
+        self.declare(Hecho(codigo='Y'))
+        
+    @Rule(Hecho(codigo='W'), salience=10)
+    def r24_entrega_menu_rapido(self):
+        print("[R24] Cliente tiene restricciones alimentarias: se observa precio de los vegetales en el mercado.")
+        self.declare(Hecho(codigo='AF'))
+
+    # ========================================================
+    # SE OBSERVA PRECIOS DE VEGETALES EN EL MERCADO (AF -> AG)
+    # ========================================================
+                
+    @Rule(Hecho(codigo='AF'))
+    def r14_arroz_sin_verduras(self):
+        print("[R25] Se observa precios de vegetales en el mercado: se compra y se reserva esa verdura si el precio es bajo.")
+        self.declare(Hecho(codigo='AG'))
+
+    # ========================================================
     # CONFLICTO: O (Minutas de cocción rápida)
     # Orden de ejecución: R20 -> R15
     # ========================================================
@@ -124,6 +171,59 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
     def r15_entrega_menu_rapido(self):
         print("[R15] Platos y guarnición listos: El cliente recibe el menú rápido.")
         self.declare(Hecho(codigo='S'))
+
+    # ========================================================
+    # CONFLICTO: C (Clima frío)
+    # Orden de ejecución: R27 -> R22 -> R32
+    # ========================================================
+
+    @Rule(Hecho(codigo='C'), salience=30)
+    def r27_encender_plancha(self):
+        print("[R27] Clima frio: Aumenta la demanda de platos de olla.")
+        self.declare(Hecho(codigo='AJ'))
+
+    @Rule(Hecho(codigo='C'), salience=20)
+    def r22_entrega_menu_rapido(self):
+        print("[R22] Clima frio: Se planifica un plato de olla de alto volumen.")
+        self.declare(Hecho(codigo='AD'))
+
+    @Rule(Hecho(codigo='O'), salience=10)
+    def r31_entrega_menu_rapido(self):
+        print("[R31] Clima frio: Se aprovechan cortes de oferta con hueso específicos para caldos.")
+        self.declare(Hecho(codigo='AO'))
+
+    # ========================================================
+    # ENCADENAMIENTO DE PLANIFICACIÓN DE OLLA ALTO VOLUMEN (AD -> AE)
+    # ========================================================
+            
+    @Rule(Hecho(codigo='AD'))
+    def r14_arroz_sin_verduras(self):
+        print("[R23] Se planifica plato de olla de alto volumen: se ocupan todas las hornallas de la cocina simultáneamente.")
+        self.declare(Hecho(codigo='AE'))
+
+    # ========================================================
+    # CONFLICTO: AJ (Aumenta demanda de plato de olla)
+    # Orden de ejecución: R28 -> R29
+    # ========================================================
+    
+    @Rule(Hecho(codigo='AJ'), salience=20)
+    def r28_encender_plancha(self):
+        print("[R28] Aumenta la demanda de plato de olla: se descartan coidas frías y milanesas como plato principal.")
+        self.declare(Hecho(codigo='AK'))
+    
+    @Rule(Hecho(codigo='AJ'), salience=10)
+    def r29_entrega_menu_rapido(self):
+        print("[R29] Aumenta la demanda de plato de olla: usar ollas grandes.")
+        self.declare(Hecho(codigo='AL'))
+
+    # ========================================================
+    # ENCADENAMIENTO DE EQUIPAMIENTO DE GRAN VOLUMEN (AL -> AM)
+    # ========================================================
+        
+    @Rule(Hecho(codigo='AL'))
+    def r14_arroz_sin_verduras(self):
+        print("[R30] Se utiliza equipamiento de gran volumen: se calcula rendimiento masivo (de 50 a 70 platos por preparación).")
+        self.declare(Hecho(codigo='AM'))
 
     # ========================================================
     # ENCADENAMIENTO DE LA PLANCHA (AB -> AC)
