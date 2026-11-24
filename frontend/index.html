@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asesor Gastronómico Inteligente • Sistema Experto</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Overlay para pantallas pequeñas -->
+        <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+        <!-- BARRA LATERAL DE LA APLICACIÓN -->
+        <aside id="app-sidebar" class="app-sidebar">
+            <div class="brand-box">
+                <div class="brand-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/>
+                        <line x1="6" y1="17" x2="18" y2="17"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>Asesor Gastronómico</h1>
+                    <span>Sistema Experto • INCO</span>
+                </div>
+            </div>
+
+            <div class="nav-section-label">MÓDULOS DEL ASISTENTE</div>
+            <nav class="sidebar-nav">
+                <button class="nav-btn nav-btn-primary" onclick="ejecutarOpcion(1); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>1. Recomendar Menú</strong>
+                        <small>Entrevista inteligente del día</small>
+                    </div>
+                </button>
+
+                <button class="nav-btn" onclick="ejecutarOpcion(2); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>2. Mostrar Menú del Día</strong>
+                        <small>Ver platos activos hoy</small>
+                    </div>
+                </button>
+
+                <button class="nav-btn" onclick="ejecutarOpcion(3); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>3. Borrar Menú del Día</strong>
+                        <small>Reiniciar pizarra de cocina</small>
+                    </div>
+                </button>
+
+                <button class="nav-btn" onclick="ejecutarOpcion(4); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="18" cy="5" r="3"/>
+                            <circle cx="6" cy="12" r="3"/>
+                            <circle cx="18" cy="19" r="3"/>
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>4. Trazabilidad (XAI)</strong>
+                        <small>Ver reglas e inferencias</small>
+                    </div>
+                </button>
+
+                <button class="nav-btn" onclick="ejecutarOpcion(5); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="16"/>
+                            <line x1="8" y1="12" x2="16" y2="12"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>5. Agregar Hecho / Plato</strong>
+                        <small>Aprendizaje continuo</small>
+                    </div>
+                </button>
+
+                <button class="nav-btn" onclick="ejecutarOpcion(6); cerrarSidebarMovil();">
+                    <span class="nav-icon">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </span>
+                    <div class="nav-info">
+                        <strong>6. Conocimiento Aprendido</strong>
+                        <small>Base dinámica guardada</small>
+                    </div>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="engine-card">
+                    <div class="engine-header">
+                        <span class="status-dot"></span>
+                        <strong>Motor Experta Activo</strong>
+                    </div>
+                    <p id="rules-counter">31 reglas base + 0 aprendidas</p>
+                </div>
+                <button class="clear-chat-btn" onclick="limpiarConversacion()">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+                    </svg>
+                    <span>Limpiar historial de pantalla</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- ÁREA PRINCIPAL DE TRABAJO (100% PANTALLA COMPLETA) -->
+        <div class="main-workspace">
+            <!-- Barra superior -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="menu-toggle-btn" onclick="toggleSidebar()" title="Menú">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <div>
+                        <h2 class="workspace-title">Centro de Decisiones Culinarias</h2>
+                        <p class="workspace-subtitle">Planificación diaria de viandas, gestión de tiempos y aprendizaje continuo</p>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div id="menu-status-pill" class="status-pill pill-empty">
+                        <span class="pill-dot"></span>
+                        <span id="menu-status-text">Sin Menú Activo</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Flujo de conversación del Asistente (Ocupa todo el ancho disponible) -->
+            <main id="chat-viewport" class="chat-viewport">
+                <div id="chat-stream" class="chat-stream">
+                    <!-- Mensajes renderizados dinámicamente -->
+                </div>
+            </main>
+
+            <!-- Barra inferior de comandos y chat (Ocupa todo el ancho disponible) -->
+            <footer class="composer-area">
+                <div class="composer-container">
+                    <div class="quick-bar">
+                        <button class="quick-chip chip-accent" onclick="ejecutarOpcion(1)">1. Recomendar menú</button>
+                        <button class="quick-chip" onclick="ejecutarOpcion(2)">2. Mostrar menú del día</button>
+                        <button class="quick-chip" onclick="ejecutarOpcion(3)">3. Borrar menú</button>
+                        <button class="quick-chip" onclick="ejecutarOpcion(4)">4. Trazabilidad</button>
+                        <button class="quick-chip" onclick="ejecutarOpcion(5)">5. Agregar hecho/plato</button>
+                        <button class="quick-chip" onclick="ejecutarOpcion(6)">6. Base aprendida</button>
+                    </div>
+
+                    <form id="chat-form" class="composer-form" onsubmit="enviarTextoUsuario(event)">
+                        <input
+                            type="text"
+                            id="user-input"
+                            placeholder="Escribí el número de opción (1 al 6) o tu consulta para el asistente..."
+                            autocomplete="off"
+                        />
+                        <button type="submit" class="composer-send-btn">
+                            <span>Enviar</span>
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"/>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script src="/script.js"></script>
+</body>
+</html>

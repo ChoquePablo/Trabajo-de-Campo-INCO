@@ -1,0 +1,16 @@
+{
+  "hechos_personalizados": {},
+  "reglas_platos": [
+    {
+      "id": "RA1",
+      "condicion_codigo": "C",
+      "condicion_descripcion": "El clima es frío",
+      "hecho_generado": "PL_1",
+      "nombre_plato": "Polenta",
+      "categoria": "Plato Principal",
+      "descripcion_plato": "Polenta con salsa y queso",
+      "tiempo_estimado": "25 min",
+      "consejo_cocina": ""
+    }
+  ]
+}
