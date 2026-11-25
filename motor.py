@@ -81,6 +81,68 @@ def cargar_conocimiento_aprendido():
         return {"hechos_personalizados": {}, "reglas_platos": []}
 
 
+def sincronizar_reglas_aprendidas_en_codigo(data):
+    """
+    Escribe o actualiza físicamente las reglas @Rule de los platos aprendidos
+    dentro del código fuente de motor.py (entre los marcadores de bloque),
+    para que cada plato agregado quede establecido como una regla real en el código.
+    """
+    ruta_motor = os.path.abspath(__file__)
+    if not os.path.exists(ruta_motor):
+        return
+
+    with open(ruta_motor, "r", encoding="utf-8") as f:
+        codigo = f.read()
+
+    marcador_ini = "    # [" + "INICIO_REGLAS_APRENDIDAS_CODIGO]"
+    marcador_fin = "    # [" + "FIN_REGLAS_APRENDIDAS_CODIGO]"
+    if marcador_ini not in codigo or marcador_fin not in codigo:
+        return
+
+    lineas_bloque = [marcador_ini]
+    reglas = data.get("reglas_platos", [])
+    if not reglas:
+        lineas_bloque.append("    # (Cuando agregues un plato en la Opción 5, su regla @Rule se escribirá aquí automáticamente)")
+    else:
+        for r in reglas:
+            rid = r["id"]
+            fn_name = f"{rid.lower()}_plato_aprendido"
+            cond = r["condicion_codigo"]
+            plato = r["nombre_plato"]
+            guarnicion = r["descripcion_plato"]
+            cat = f"{r['categoria']} (Aprendido)"
+            motivo = f"Condición [{cond}] ({r['condicion_descripcion']})"
+            tiempo = r.get("tiempo_estimado", "25 min")
+            tip = r.get("consejo_cocina") or motivo
+
+            lineas_bloque.append("")
+            lineas_bloque.append(f"    @Rule(Hecho(codigo={json.dumps(cond, ensure_ascii=False)}), salience=-25)")
+            lineas_bloque.append(f"    def {fn_name}(self):")
+            lineas_bloque.append("        self._recomendar_menu(")
+            lineas_bloque.append(f"            {json.dumps(rid, ensure_ascii=False)},")
+            lineas_bloque.append(f"            plato={json.dumps(plato, ensure_ascii=False)},")
+            lineas_bloque.append(f"            guarnicion={json.dumps(guarnicion, ensure_ascii=False)},")
+            lineas_bloque.append(f"            categoria={json.dumps(cat, ensure_ascii=False)},")
+            lineas_bloque.append(f"            motivo={json.dumps(motivo, ensure_ascii=False)},")
+            lineas_bloque.append("            es_principal=False,")
+            lineas_bloque.append('            icono="sparkle",')
+            lineas_bloque.append(f"            tiempo={json.dumps(tiempo, ensure_ascii=False)},")
+            lineas_bloque.append('            rendimiento="Personalizado por Lucía",')
+            lineas_bloque.append(f"            tip={json.dumps(tip, ensure_ascii=False)},")
+            lineas_bloque.append("            prioridad=-25,")
+            lineas_bloque.append("        )")
+
+    lineas_bloque.append(marcador_fin)
+    nuevo_bloque = "\n".join(lineas_bloque)
+
+    idx_ini = codigo.rindex(marcador_ini)
+    idx_fin = codigo.rindex(marcador_fin) + len(marcador_fin)
+    nuevo_codigo = codigo[:idx_ini] + nuevo_bloque + codigo[idx_fin:]
+
+    with open(ruta_motor, "w", encoding="utf-8") as f:
+        f.write(nuevo_codigo)
+
+
 def guardar_nuevo_aprendizaje(
     condicion_codigo,
     condicion_descripcion,
@@ -91,7 +153,7 @@ def guardar_nuevo_aprendizaje(
     tiempo_estimado,
     consejo_cocina,
 ):
-    """Guarda un nuevo hecho y/o regla de recomendación de plato en la base aprendida."""
+    """Guarda un nuevo hecho y/o regla de recomendación de plato en la base aprendida y escribe la @Rule en motor.py."""
     data = cargar_conocimiento_aprendido()
     codigo_cond = (condicion_codigo or "C").strip().upper()
 
@@ -100,15 +162,15 @@ def guardar_nuevo_aprendizaje(
         desc_limpia = condicion_descripcion.strip() or f"Condición personalizada {codigo_cond}"
         data["hechos_personalizados"][codigo_cond] = desc_limpia
 
-    # Calcular ID incremental único aunque se hayan borrado reglas previas
-    max_num = 0
+    # Calcular ID incremental único que nunca se reutilice aunque se hayan borrado todas las reglas
+    max_num = int(data.get("ultimo_id_num", 0))
     for r in data["reglas_platos"]:
         rid = r.get("id", "")
         if rid.startswith("RA") and rid[2:].isdigit():
             max_num = max(max_num, int(rid[2:]))
     nuevo_idx = max_num + 1
+    data["ultimo_id_num"] = nuevo_idx
     regla_id = f"RA{nuevo_idx}"
-    hecho_generado = f"PL_{nuevo_idx}"
 
     catalogo = obtener_catalogo_hechos_completo()
     desc_final = catalogo.get(codigo_cond) or data["hechos_personalizados"].get(codigo_cond) or condicion_descripcion.strip()
@@ -117,7 +179,6 @@ def guardar_nuevo_aprendizaje(
         "id": regla_id,
         "condicion_codigo": codigo_cond,
         "condicion_descripcion": desc_final,
-        "hecho_generado": hecho_generado,
         "nombre_plato": nombre_plato.strip(),
         "categoria": categoria,
         "descripcion_plato": descripcion_plato.strip(),
@@ -129,11 +190,12 @@ def guardar_nuevo_aprendizaje(
     with open(ARCHIVO_APRENDIZAJE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    sincronizar_reglas_aprendidas_en_codigo(data)
     return nueva_regla
 
 
 def eliminar_regla_aprendida(regla_id):
-    """Elimina una regla aprendida por su ID (o todas si regla_id == 'TODAS') y limpia hechos huérfanos."""
+    """Elimina una regla aprendida por su ID (o todas si regla_id == 'TODAS'), limpia hechos huérfanos y actualiza motor.py."""
     data = cargar_conocimiento_aprendido()
     if regla_id == "TODAS":
         data["reglas_platos"] = []
@@ -147,14 +209,14 @@ def eliminar_regla_aprendida(regla_id):
     with open(ARCHIVO_APRENDIZAJE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+    sincronizar_reglas_aprendidas_en_codigo(data)
+
 
 def obtener_catalogo_hechos_completo():
-    """Devuelve DESCRIPCION_HECHOS fusionado con los hechos aprendidos."""
+    """Devuelve DESCRIPCION_HECHOS fusionado únicamente con los hechos de condición aprendidos (sin códigos PL_X fantasma)."""
     catalogo = dict(DESCRIPCION_HECHOS)
     aprendido = cargar_conocimiento_aprendido()
     catalogo.update(aprendido.get("hechos_personalizados", {}))
-    for r in aprendido.get("reglas_platos", []):
-        catalogo[r["hecho_generado"]] = f"Sugerir plato aprendido: {r['nombre_plato']}"
     return catalogo
 
 
@@ -163,11 +225,27 @@ class Hecho(Fact):
     pass
 
 
+class MenuSugerido(Fact):
+    """Representa un plato concreto recomendado por una regla del motor."""
+    pass
+
+
+class PlatoUsado(Fact):
+    """Registra platos ya asignados anteriormente para evitar repeticiones (rotación)."""
+    pass
+
+
+class MenuPrincipalDefinido(Fact):
+    """Bandera en memoria de trabajo para asegurar la selección del plato principal según salience."""
+    pass
+
+
 class AsesorVirtualGastronomico(KnowledgeEngine):
     def __init__(self):
         super().__init__()
         self.traza = []            # Explicabilidad (XAI): cadena de reglas disparadas
         self.recomendaciones = []  # Acciones concretas para mostrar a Lucía
+        self.menus_sugeridos = []  # Platos recomendados formalmente por reglas R33-R43
         self.platos_aprendidos_disparados = []
 
     def reset(self, **kwargs):
@@ -175,7 +253,58 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         super().reset(**kwargs)
         self.traza = []
         self.recomendaciones = []
+        self.menus_sugeridos = []
         self.platos_aprendidos_disparados = []
+
+    def cargar_platos_usados(self, platos):
+        """Declara en la memoria de trabajo los platos ya usados para que las reglas R33-R43 roten el menú."""
+        for plato in (platos or []):
+            self.declare(PlatoUsado(plato=plato))
+
+    def _recomendar_menu(
+        self,
+        regla_id,
+        plato,
+        guarnicion,
+        categoria,
+        motivo,
+        es_principal=True,
+        icono="utensils",
+        tiempo="25 min",
+        rendimiento="35 a 45 viandas",
+        tip="",
+        prioridad=0,
+    ):
+        """Declara formalmente el hecho MenuSugerido en el motor Experta y lo registra en la traza XAI."""
+        self.declare(MenuSugerido(plato=plato, guarnicion=guarnicion, categoria=categoria))
+        if es_principal:
+            self.declare(MenuPrincipalDefinido())
+
+        tipo_label = "MENÚ PRINCIPAL" if es_principal else "MENÚ COMPLEMENTARIO / PARALELO"
+        prio_txt = f" (salience={prioridad})" if prioridad != 0 else ""
+        self.registrar_paso(
+            regla=f"{regla_id}{prio_txt}",
+            explicacion=f"{motivo} -> Decide [{tipo_label}]: '{plato}' con {guarnicion}.",
+            recomendacion=f"[{tipo_label} - {regla_id}] Preparar {plato} acompañado de {guarnicion}.",
+        )
+
+        self.menus_sugeridos.append(
+            {
+                "regla": regla_id,
+                "plato": plato,
+                "guarnicion": guarnicion,
+                "categoria": categoria,
+                "motivo": motivo,
+                "es_principal": es_principal,
+                "nombre": f"{plato} — {guarnicion}" if guarnicion else plato,
+                "icono": icono,
+                "tiempo": tiempo,
+                "rendimiento": rendimiento,
+                "descripcion": f"Plato: {plato}. Guarnición: {guarnicion}. ({motivo})",
+                "tip": tip or motivo,
+                "regla_origen": regla_id,
+            }
+        )
 
     def registrar_paso(self, regla, explicacion, recomendacion):
         """Método auxiliar para registrar la traza XAI y la recomendación."""
@@ -183,35 +312,44 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         self.recomendaciones.append(recomendacion)
 
     def obtener_hechos_finales(self):
-        """Devuelve la lista de códigos de hechos en la memoria de trabajo."""
-        return [fact["codigo"] for fact in self.facts.values() if "codigo" in fact]
+        """Devuelve la lista limpia de códigos de hechos en la memoria de trabajo (sin códigos PL_X artificiales)."""
+        catalogo_valido = obtener_catalogo_hechos_completo()
+        return [
+            fact["codigo"]
+            for fact in self.facts.values()
+            if "codigo" in fact and fact["codigo"] in catalogo_valido
+        ]
 
     def run(self, steps=None):
-        """Ejecuta el motor Experta y luego evalúa las reglas aprendidas dinámicamente."""
+        """Ejecuta el motor Experta y las reglas aprendidas (sin crear hechos PL_X fantasma en la memoria de trabajo)."""
         if steps is None:
             super().run()
         else:
             super().run(steps)
 
-        # Evaluar reglas aprendidas continuamente
+        # Evaluar reglas aprendidas que aún no se hayan disparado como @Rule en esta sesión
         aprendido = cargar_conocimiento_aprendido()
         hechos_actuales = set(self.obtener_hechos_finales())
+        reglas_ya_disparadas = {m["regla"] for m in self.menus_sugeridos}
 
         for regla in aprendido.get("reglas_platos", []):
+            rid = regla["id"]
             cond = regla["condicion_codigo"]
-            hecho_gen = regla["hecho_generado"]
-            if cond in hechos_actuales and hecho_gen not in hechos_actuales:
-                self.declare(Hecho(codigo=hecho_gen))
-                hechos_actuales.add(hecho_gen)
-                self.platos_aprendidos_disparados.append(regla)
-                self.registrar_paso(
-                    regla=regla["id"],
-                    explicacion=(
-                        f"Hecho {cond} ({regla['condicion_descripcion']}) -> "
-                        f"Aprendizaje activo: Recomendar '{regla['nombre_plato']}' ({hecho_gen})."
-                    ),
-                    recomendacion=f"[Aprendido] Incorporar al menú: {regla['nombre_plato']} ({regla['descripcion_plato']}).",
+            if cond in hechos_actuales and rid not in reglas_ya_disparadas:
+                self._recomendar_menu(
+                    rid,
+                    plato=regla["nombre_plato"],
+                    guarnicion=regla["descripcion_plato"],
+                    categoria=f"{regla['categoria']} (Aprendido)",
+                    motivo=f"Condición [{cond}] ({regla['condicion_descripcion']})",
+                    es_principal=False,
+                    icono="sparkle",
+                    tiempo=regla.get("tiempo_estimado", "25 min"),
+                    rendimiento="Personalizado por Lucía",
+                    tip=regla.get("consejo_cocina") or f"Activado por condición {cond}.",
+                    prioridad=-25,
                 )
+                reglas_ya_disparadas.add(rid)
 
     # ========================================================
     # RAMA 1: INICIO DE SEMANA Y OFERTA DE CARNE (A + B -> D)
@@ -547,14 +685,300 @@ class AsesorVirtualGastronomico(KnowledgeEngine):
         )
         self.declare(Hecho(codigo="AG"))
 
+    # ========================================================
+    # CAPA DE REGLAS DE RECOMENDACIÓN DE PLATOS (R33 - R43)
+    # Adaptadas de ramaAriel (salience < 0): se evalúan al finalizar
+    # la inferencia operativa para decidir los platos del menú.
+    # ========================================================
+
+    # --- 1. Contingencia / Minutas rápidas (si hubo demora L o falta de ayudante G/I -> O y Q) ---
+
+    @Rule(
+        OR(
+            AND(Hecho(codigo="O"), Hecho(codigo="Q")),
+            AND(Hecho(codigo="I"), NOT(Hecho(codigo="O"))),
+        ),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Milanesas (carne/pollo)")),
+        salience=-10,
+    )
+    def r33_menu_contingencia_milanesas(self):
+        self._recomendar_menu(
+            "R33",
+            plato="Milanesas (carne/pollo)",
+            guarnicion="Arroz blanco de reserva (sin verduras)",
+            categoria="Minuta / Contingencia",
+            motivo="Contingencia o retraso en cocina [L/O/I] y arroz de reserva disponible [Q].",
+            es_principal=True,
+            icono="utensils",
+            tiempo="12 - 15 min",
+            rendimiento="Al instante / A demanda",
+            tip="Encender plancha/freidora anticipadamente (R20) y usar arroz sin verduras (R13) para que no fermente.",
+            prioridad=-10,
+        )
+
+    @Rule(
+        OR(
+            AND(Hecho(codigo="O"), Hecho(codigo="Q")),
+            AND(Hecho(codigo="I"), NOT(Hecho(codigo="O"))),
+        ),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Bifes a la plancha o Costeletas")),
+        salience=-11,
+    )
+    def r34_menu_contingencia_bifes(self):
+        self._recomendar_menu(
+            "R34",
+            plato="Bifes a la plancha o Costeletas",
+            guarnicion="Arroz blanco de reserva (sin verduras)",
+            categoria="Minuta / Contingencia",
+            motivo="Contingencia activa [L/O/I] rotando plato rápido para no repetir.",
+            es_principal=True,
+            icono="utensils",
+            tiempo="15 min",
+            rendimiento="Salida inmediata",
+            tip="Ideal para despachar rápido mientras se conversa con el cliente en mostrador (R21).",
+            prioridad=-11,
+        )
+
+    # --- 2. Clima frío sin contingencia ni retraso (platos de olla) ---
+
+    @Rule(
+        Hecho(codigo="C"),
+        Hecho(codigo="AO"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Puchero")),
+        salience=-10,
+    )
+    def r35_menu_frio_puchero(self):
+        self._recomendar_menu(
+            "R35",
+            plato="Puchero",
+            guarnicion="Caldo y verduras de olla",
+            categoria="Clima Frío (Olla)",
+            motivo="Clima frío [C] y cortes con hueso en oferta [AO] sin demoras.",
+            es_principal=True,
+            icono="soup",
+            tiempo="70 min",
+            rendimiento="50 a 70 porciones (Olla grande)",
+            tip="Excelente margen de ganancia aprovechando ofertas de cortes con hueso para días fríos (R31).",
+            prioridad=-10,
+        )
+
+    @Rule(
+        Hecho(codigo="AD"),
+        Hecho(codigo="D"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Guiso de lentejas o carne")),
+        salience=-11,
+    )
+    def r36_menu_frio_guiso(self):
+        self._recomendar_menu(
+            "R36",
+            plato="Guiso de lentejas o carne",
+            guarnicion="Plato único de olla (rendimiento masivo)",
+            categoria="Clima Frío (Olla)",
+            motivo="Clima frío [AD] aprovechando pieza entera de carne [D].",
+            es_principal=True,
+            icono="flame",
+            tiempo="60 - 75 min",
+            rendimiento="50 a 70 porciones (Olla grande)",
+            tip="Alta demanda asegurada en días fríos; priorizar por sobre minutas o platos fríos (R27 + R28).",
+            prioridad=-11,
+        )
+
+    @Rule(
+        Hecho(codigo="AD"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Locro")),
+        salience=-12,
+    )
+    def r37_menu_frio_locro(self):
+        self._recomendar_menu(
+            "R37",
+            plato="Locro",
+            guarnicion="Plato único de olla grande",
+            categoria="Clima Frío (Olla)",
+            motivo="Clima frío [AD] con rotación de menú de alto rendimiento.",
+            es_principal=True,
+            icono="flame",
+            tiempo="90 - 120 min",
+            rendimiento="50 a 70 porciones (Olla grande)",
+            tip="Usar equipamiento de gran volumen (R29) y prever la ocupación de todas las hornallas simultáneamente (R23).",
+            prioridad=-12,
+        )
+
+    @Rule(
+        Hecho(codigo="AJ"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Albóndigas o Pastas a la boloñesa")),
+        salience=-13,
+    )
+    def r38_menu_frio_albondigas(self):
+        self._recomendar_menu(
+            "R38",
+            plato="Albóndigas o Pastas a la boloñesa",
+            guarnicion="Puré o fideos",
+            categoria="Clima Frío",
+            motivo="Alta demanda de platos calientes [AJ] rotando opción sin repetir.",
+            es_principal=True,
+            icono="flame",
+            tiempo="45 min",
+            rendimiento="40 a 50 porciones",
+            tip="Alternativa caliente de alto rendimiento cuando ya se rotaron Puchero, Guiso y Locro.",
+            prioridad=-13,
+        )
+
+    # --- 3. Clima cálido sin contingencia ---
+
+    @Rule(
+        Hecho(codigo="V"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Milanesas con ensalada")),
+        salience=-10,
+    )
+    def r39_menu_calido_milanesas(self):
+        self._recomendar_menu(
+            "R39",
+            plato="Milanesas con ensalada",
+            guarnicion="Ensalada de espinaca y huevo / frescas",
+            categoria="Clima Cálido",
+            motivo="Clima cálido [T/V]: se descartan guisos y se sugieren platos frescos.",
+            es_principal=True,
+            icono="leaf",
+            tiempo="20 min",
+            rendimiento="25 a 35 viandas",
+            tip="Reemplaza los guisos calientes en jornadas de calor (R16).",
+            prioridad=-10,
+        )
+
+    @Rule(
+        Hecho(codigo="V"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Bifes a la plancha con ensaladas varias")),
+        salience=-11,
+    )
+    def r40_menu_calido_bifes(self):
+        self._recomendar_menu(
+            "R40",
+            plato="Bifes a la plancha con ensaladas varias",
+            guarnicion="Ensaladas varias o arroz frío",
+            categoria="Clima Cálido",
+            motivo="Clima cálido [T/V] rotando menú liviano para evitar repetición.",
+            es_principal=True,
+            icono="leaf",
+            tiempo="20 min",
+            rendimiento="25 a 35 viandas",
+            tip="Se sirve acompañado de guarniciones frescas, ideal para viandas en días cálidos (R16).",
+            prioridad=-11,
+        )
+
+    # --- 4. Ingrediente versátil sin clima extremo ni demora ---
+
+    @Rule(
+        Hecho(codigo="AH"),
+        NOT(Hecho(codigo="L")),
+        NOT(Hecho(codigo="I")),
+        NOT(MenuPrincipalDefinido()),
+        NOT(PlatoUsado(plato="Suprema de pollo")),
+        salience=-14,
+    )
+    def r41_menu_versatil_suprema(self):
+        self._recomendar_menu(
+            "R41",
+            plato="Suprema de pollo",
+            guarnicion="Puré o papas fritas (se reservan cuartos traseros para mañana)",
+            categoria="Ingrediente Versátil",
+            motivo="Despiece de ingrediente versátil [E/AH] maximizando rendimiento.",
+            es_principal=True,
+            icono="utensils",
+            tiempo="25 min",
+            rendimiento="Rinde extendido (2 días)",
+            tip="Permite resolver dos días de menú con una sola compra mayorista (R26).",
+            prioridad=-14,
+        )
+
+    # --- 5. Menú paralelo para clientes con restricciones (no bloquea el principal) ---
+
+    @Rule(Hecho(codigo="Y"), salience=-20)
+    def r42_menu_paralelo_restricciones(self):
+        self._recomendar_menu(
+            "R42",
+            plato="Menú paralelo básico (bife o pollo a la plancha)",
+            guarnicion="Ensalada fresca o arroz blanco sin condimentos",
+            categoria="Menú Paralelo (Restricciones)",
+            motivo="Cliente con restricciones alimentarias [W/Y].",
+            es_principal=False,
+            icono="leaf",
+            tiempo="20 min",
+            rendimiento="Viandas personalizadas",
+            tip="Monitorear precio de vegetales en el mercado y comprar para reservar cuando esté económico (R17 + R24 + R25).",
+            prioridad=-20,
+        )
+
+    # --- 6. Entrada rápida de cortesía en contingencia (no bloquea el principal) ---
+
+    @Rule(Hecho(codigo="Z"), salience=-21)
+    def r42b_entrada_sopa_contingencia(self):
+        self._recomendar_menu(
+            "R18 (Plato Z)",
+            plato="Sopa Casera Caliente de Entrada",
+            guarnicion="Caldo reconfortante de cortesía",
+            categoria="Entrada Rápida (Contingencia)",
+            motivo="Se ofrece un plato de entrada rápido (sopa) ante la demora [L -> Z].",
+            es_principal=False,
+            icono="soup",
+            tiempo="3 min (servido inmediato)",
+            rendimiento="1 taza por cliente en espera",
+            tip="Calma la espera del cliente y mejora la experiencia ante el retraso en cocina (R18).",
+            prioridad=-21,
+        )
+
+    # --- 7. Comodín si ya se agotaron las rotaciones o no se indicó clima ---
+
+    @Rule(NOT(MenuPrincipalDefinido()), salience=-30)
+    def r43_menu_comodin(self):
+        self._recomendar_menu(
+            "R43",
+            plato="Hamburguesas o Napolitanas",
+            guarnicion="Papas fritas o puré",
+            categoria="Menú Estándar / Comodín",
+            motivo="Opción estándar de rotación rápida fuera de restricciones críticas.",
+            es_principal=True,
+            icono="utensils",
+            tiempo="25 min",
+            rendimiento="35 viandas estándar",
+            tip="Jornada estándar o rotación completada: opción versátil de alta aceptación.",
+            prioridad=-30,
+        )
+
+    # ========================================================
+    # 8. REGLAS DE PLATOS AGREGADOS POR EL USUARIO (OPCIÓN 5)
+    # ========================================================
+    # [INICIO_REGLAS_APRENDIDAS_CODIGO]
+    # (Cuando agregues un plato en la Opción 5, su regla @Rule se escribirá aquí automáticamente)
+    # [FIN_REGLAS_APRENDIDAS_CODIGO]
+
 
 # ========================================================
 # GENERADOR DE MENÚ DE PLATOS Y RECOMENDACIONES EXPERTAS
 # ========================================================
-def construir_menu_recomendado(hechos_fin, platos_aprendidos=None, hechos_iniciales=None):
+def construir_menu_recomendado(hechos_fin, platos_aprendidos=None, hechos_iniciales=None, menus_reglas=None):
     """
-    Convierte los hechos inferidos en:
-    1. Platillos concretos recomendados para el menú del día.
+    Convierte los hechos inferidos y los platos decididos por las reglas R33-R43 en:
+    1. Platillos concretos recomendados por las reglas del motor para el menú del día.
     2. Recomendaciones operativas completas de la experta (compras, fileteado/congelado,
        conservación, equipamiento, tiempos y atención al cliente).
     3. Platos descartados y el motivo según las reglas.
@@ -571,213 +995,34 @@ def construir_menu_recomendado(hechos_fin, platos_aprendidos=None, hechos_inicia
     }
 
     # --------------------------------------------------------
-    # A. PLATILLOS RECOMENDADOS
+    # A. PLATILLOS DECIDIDOS POR REGLAS DEL MOTOR (R33 - R43)
     # --------------------------------------------------------
-
-    # 1. CONTINGENCIA / MINUTAS RÁPIDAS (O, P, Q, S)
-    if "O" in h:
-        guarnicion = "Arroz blanco de reserva (cocinado sin cebolla ni verduras frescas)" if "Q" in h else "Arroz blanco"
-        platos.append(
-            {
-                "nombre": "Milanesas o Bifes a la Plancha con Arroz Blanco",
-                "icono": "utensils",
-                "categoria": "Plato Principal Rápido (Contingencia)",
-                "tiempo": "12 - 15 min",
-                "rendimiento": "Al instante / A demanda",
-                "descripcion": f"Minutas de cocción rápida (milanesas, bifes o costeletas) acompañadas de {guarnicion}.",
-                "tip": "Encender plancha/freidora anticipadamente (R20) y usar arroz sin verduras (R13) para que no fermente.",
-                "regla_origen": "R11 + R12 + R13 + R15",
-            }
-        )
-        platos.append(
-            {
-                "nombre": "Costeletas a la Plancha con Arroz al Caldo",
-                "icono": "utensils",
-                "categoria": "Alternativa de Minuta Rápida",
-                "tiempo": "15 min",
-                "rendimiento": "Salida inmediata",
-                "descripcion": "Costeletas doradas a la plancha rápida con porción de arroz de reserva listo para despachar.",
-                "tip": "Ideal para despachar rápido mientras se conversa con el cliente en mostrador (R21).",
-                "regla_origen": "R11 + R20 + R21",
-            }
-        )
-
-    # 2. ENTRADA DE CORTESÍA EN DEMORA (Z)
-    if "Z" in h:
-        platos.append(
-            {
-                "nombre": "Sopa Casera Caliente de Entrada",
-                "icono": "soup",
-                "categoria": "Entrada Rápida de Cortesía",
-                "tiempo": "3 min (servido inmediato)",
-                "rendimiento": "1 taza por cliente en espera",
-                "descripcion": "Caldo casero reconfortante servido como entrada rápida mientras se terminan de dorar las minutas.",
-                "tip": "Calma la espera del cliente y mejora la experiencia ante el retraso en cocina (R18).",
-                "regla_origen": "R18",
-            }
-        )
-
-    # 3. CLIMA FRÍO: PLATOS DE OLLA MASIVOS (AD, AJ, AL, AM, AO)
-    # Si hay cualquier demora o falta de ayudante (G, H, I, J, K o L), no recomendar Locro/Guiso de 90-120 min:
     hay_falta_de_tiempo = bool({"G", "H", "I", "J", "K", "L"} & h)
-    if ("AD" in h or "AJ" in h) and not hay_falta_de_tiempo:
-        rinde_txt = "50 a 70 porciones (Olla grande)" if "AM" in h else "30 a 40 porciones"
-        platos.append(
-            {
-                "nombre": "Locro Criollo Masivo en Olla Grande",
-                "icono": "flame",
-                "categoria": "Plato Principal de Olla (Clima Frío)",
-                "tiempo": "90 - 120 min",
-                "rendimiento": rinde_txt,
-                "descripcion": "Locro bien completo de alto volumen ideal para cubrir el pico de demanda por bajas temperaturas.",
-                "tip": "Usar equipamiento de gran volumen (R29) y prever la ocupación de todas las hornallas simultáneamente (R23).",
-                "regla_origen": "R22 + R23 + R29 + R30",
-            }
-        )
-        platos.append(
-            {
-                "nombre": "Guiso de Lentejas Casero de Alto Rendimiento",
-                "icono": "flame",
-                "categoria": "Plato Principal de Olla (Clima Frío)",
-                "tiempo": "60 - 75 min",
-                "rendimiento": rinde_txt,
-                "descripcion": "Guiso sustancioso de lentejas con carne y vegetales para despacho continuo de viandas calientes.",
-                "tip": "Alta demanda asegurada en días fríos; priorizar por sobre minutas o platos fríos (R27 + R28).",
-                "regla_origen": "R27 + R28",
-            }
-        )
-    elif ("AD" in h or "AJ" in h) and hay_falta_de_tiempo:
+
+    if menus_reglas:
+        for m in menus_reglas:
+            platos.append(
+                {
+                    "nombre": m.get("nombre") or f"{m['plato']} — {m['guarnicion']}",
+                    "plato": m["plato"],
+                    "guarnicion": m["guarnicion"],
+                    "es_principal": m.get("es_principal", True),
+                    "icono": m.get("icono", "utensils"),
+                    "categoria": m["categoria"],
+                    "tiempo": m.get("tiempo", "25 min"),
+                    "rendimiento": m.get("rendimiento", "35 a 45 viandas"),
+                    "descripcion": m.get("descripcion") or f"Plato: {m['plato']}. Guarnición: {m['guarnicion']}. ({m['motivo']})",
+                    "tip": m.get("tip") or m["motivo"],
+                    "regla_origen": m["regla"],
+                }
+            )
+
+    if ("AD" in h or "AJ" in h) and hay_falta_de_tiempo:
         descartados.append(
-            "<b>Locro y Guiso de Lentejas de larga cocción (90-120 min) descartados hoy por demora:</b> "
-            "aunque hace frío (C), el retraso en cocina / falta de ayudante impide elaboraciones de 2 horas; "
-            "se reemplazan por minutas rápidas y sopa caliente de entrada."
+            "<b>Platos de olla de larga cocción (Puchero R35, Guiso R36, Locro R37) descartados hoy por demora:</b> "
+            "aunque hace frío (C), el retraso en cocina / falta de ayudante activa las reglas de contingencia (R33/R34) "
+            "priorizando minutas rápidas con arroz de reserva y sopa caliente de entrada."
         )
-        if "O" not in h:
-            platos.append(
-                {
-                    "nombre": "Milanesas o Bifes a la Plancha con Arroz Blanco",
-                    "icono": "utensils",
-                    "categoria": "Plato Principal Rápido (Por Retraso en Cocina)",
-                    "tiempo": "12 - 15 min",
-                    "rendimiento": "Salida rápida",
-                    "descripcion": "Minutas de cocción rápida para compensar el retraso de inicio en la cocina (Hecho I).",
-                    "tip": "Permite cumplir a tiempo con los clientes cuando no alcanzan las 2 horas para un plato de olla.",
-                    "regla_origen": "R4 + R5 (Retraso I)",
-                }
-            )
-
-    if "AO" in h and not hay_falta_de_tiempo:
-        platos.append(
-            {
-                "nombre": "Puchero / Sopa Sustanciosa de Osobuco",
-                "icono": "soup",
-                "categoria": "Plato de Olla Económico (Oferta con Hueso)",
-                "tiempo": "70 min",
-                "rendimiento": "40 a 50 porciones",
-                "descripcion": "Caldo concentrado y puchero elaborado aprovechando cortes económicos con hueso en oferta (osobuco/puchero).",
-                "tip": "Excelente margen de ganancia aprovechando ofertas de cortes con hueso para días fríos (R31).",
-                "regla_origen": "R31",
-            }
-        )
-    elif "AO" in h and hay_falta_de_tiempo:
-        platos.append(
-            {
-                "nombre": "Caldo Rápido Concentrado de Osobuco (Entrada de Invierno)",
-                "icono": "soup",
-                "categoria": "Caldo Caliente en Contingencia (Oferta con Hueso)",
-                "tiempo": "25 min (en olla a presión / caldo corto)",
-                "rendimiento": "40 tazas de entrada",
-                "descripcion": "Aprovecha los cortes con hueso en oferta (AO) para reforzar la sopa caliente de entrada rápida (Z) mientras salen las minutas.",
-                "tip": "Combina la ventaja de oferta de invierno (R31) con la entrada rápida de contingencia (R18).",
-                "regla_origen": "R31 + R18",
-            }
-        )
-
-    # 4. CLIMA CÁLIDO / VERANO (V)
-    if "V" in h:
-        platos.append(
-            {
-                "nombre": "Ensalada Caesar Completa con Pollo Grillado",
-                "icono": "leaf",
-                "categoria": "Plato Principal Fresco (Verano)",
-                "tiempo": "20 min",
-                "rendimiento": "25 a 35 viandas",
-                "descripcion": "Hojas verdes frescas, tiras de pechuga grillada, crutones caseros y aderezo liviano.",
-                "tip": "Reemplaza los guisos calientes en jornadas de calor (R16).",
-                "regla_origen": "R16",
-            }
-        )
-        platos.append(
-            {
-                "nombre": "Tarta Primavera Fresca + Ensalada Multicolor",
-                "icono": "leaf",
-                "categoria": "Plato Principal Fresco (Verano)",
-                "tiempo": "30 min",
-                "rendimiento": "24 porciones",
-                "descripcion": "Tarta liviana de vegetales de estación acompañada de ensalada fresca de tomate, zanahoria y huevo.",
-                "tip": "Se sirve tibia o fría, ideal para viandas de oficina en días cálidos (R16).",
-                "regla_origen": "R16",
-            }
-        )
-
-    # 5. PIEZA ENTERA VERSÁTIL EN OPERACIÓN NORMAL (F, AH, AI, N sin K)
-    if "F" in h and "K" not in h:
-        platos.append(
-            {
-                "nombre": "Guiso Casero del Día + Bifes Criollos (Menú Doble)",
-                "icono": "utensils",
-                "categoria": "Doble Opción con Pieza Entera",
-                "tiempo": "50 min",
-                "rendimiento": "Optimizado (Mayor Margen R14)",
-                "descripcion": "Se aprovecha la pieza de carne entera en oferta para sacar dos platos: guiso tradicional y bifes fileteados en cocina.",
-                "tip": "Congelar un poco la carne antes de filetear (R9, R10) para reducir desperdicios y aumentar la ganancia (R14).",
-                "regla_origen": "R1 + R2 + R3 + R9 + R10 + R14",
-            }
-        )
-    if "AH" in h:
-        platos.append(
-            {
-                "nombre": "Supremas de Pechuga Deshuesada al Limón o Napolitana",
-                "icono": "utensils",
-                "categoria": "Aprovechamiento de Pieza Versátil",
-                "tiempo": "25 min",
-                "rendimiento": "Rinde extendido (2 días)",
-                "descripcion": "Supremas preparadas con la parte deshuesada para hoy, guardando otra parte (ej. cuartos traseros) para el menú de mañana.",
-                "tip": "Permite resolver dos días de menú con una sola compra mayorista (R26).",
-                "regla_origen": "R26",
-            }
-        )
-
-    # 6. CLIENTE CON RESTRICCIONES ALIMENTARIAS (Y, AF, AG)
-    if "Y" in h:
-        platos.append(
-            {
-                "nombre": "Medallones / Tarta de Espinaca y Arroz Yamaní (Menú Especial)",
-                "icono": "leaf",
-                "categoria": "Vianda Paralela (Restricción Alimentaria)",
-                "tiempo": "25 min",
-                "rendimiento": "Viandas personalizadas",
-                "descripcion": "Menú paralelo básico y saludable elaborado con espinaca fresca seleccionada a buen precio en el mercado.",
-                "tip": "Monitorear precio de espinaca en el mercado y comprar para reservar cuando esté económico (R17 + R24 + R25).",
-                "regla_origen": "R17 + R24 + R25",
-            }
-        )
-
-    # 7. PLATOS APRENDIDOS CONTINUAMENTE
-    if platos_aprendidos:
-        for pa in platos_aprendidos:
-            platos.append(
-                {
-                    "nombre": pa["nombre_plato"],
-                    "icono": "sparkle",
-                    "categoria": f"{pa['categoria']} (Aprendido)",
-                    "tiempo": pa.get("tiempo_estimado", "25 min"),
-                    "rendimiento": "Personalizado por Lucía",
-                    "descripcion": pa["descripcion_plato"],
-                    "tip": pa.get("consejo_cocina") or f"Activado por condición {pa['condicion_codigo']}.",
-                    "regla_origen": pa["id"],
-                }
-            )
 
     # --------------------------------------------------------
     # B. RECOMENDACIONES DE LA EXPERTA (TODOS LOS HECHOS DEDUCIDOS)

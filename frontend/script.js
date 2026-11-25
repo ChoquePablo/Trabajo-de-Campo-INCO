@@ -158,7 +158,7 @@ function actualizarCabecera() {
     const cantAprendidas = estadoSistema.reglasAprendidas.length;
     const counterEl = document.getElementById("rules-counter");
     if (counterEl) {
-        counterEl.textContent = `31 reglas base + ${cantAprendidas} aprendidas`;
+        counterEl.textContent = `31 reglas operativas + 11 de platos + ${cantAprendidas} aprendidas`;
     }
 
     const pillEl = document.getElementById("menu-status-pill");
@@ -191,12 +191,40 @@ function registrarReglaEliminadaLocal(reglaId) {
     } catch (_) {}
 }
 
+function desmarcarReglaEliminadaLocal(reglaId) {
+    try {
+        const set = obtenerReglasEliminadasLocal();
+        if (set.has(reglaId)) {
+            set.delete(reglaId);
+            localStorage.setItem("chefbot_reglas_eliminadas", JSON.stringify([...set]));
+        }
+    } catch (_) {}
+}
+
 async function sincronizarEstadoServidor() {
     try {
         const res = await fetch("/api/estado");
         const data = await res.json();
+        const reglasServidor = data.reglas_platos || [];
+
+        // Si el servidor ya no tiene una regla, limpiar ese ID de chefbot_reglas_eliminadas
+        // para que nunca bloquee futuras reglas nuevas
+        const idsEnServidor = new Set(reglasServidor.map((r) => r.id));
         const eliminadasLocal = obtenerReglasEliminadasLocal();
-        const reglasFiltradas = (data.reglas_platos || []).filter((r) => !eliminadasLocal.has(r.id));
+        let cambioLocal = false;
+        for (const idElim of [...eliminadasLocal]) {
+            if (!idsEnServidor.has(idElim)) {
+                eliminadasLocal.delete(idElim);
+                cambioLocal = true;
+            }
+        }
+        if (cambioLocal) {
+            try {
+                localStorage.setItem("chefbot_reglas_eliminadas", JSON.stringify([...eliminadasLocal]));
+            } catch (_) {}
+        }
+
+        const reglasFiltradas = reglasServidor.filter((r) => !eliminadasLocal.has(r.id));
 
         const codigosActivos = new Set(reglasFiltradas.map((r) => r.condicion_codigo));
         const hechosPers = {};
@@ -579,6 +607,18 @@ function mostrarAvisoMenuExistente() {
 }
 
 async function confirmarReemplazoMenu() {
+    // Recuperar las condiciones anteriores del menú actual para que el usuario solo cambie las que quiera
+    const menuPrevio = estadoSistema.menuDelDia;
+    const hPrev = new Set(menuPrevio?.hechos_iniciales || []);
+    const respPrev = menuPrevio?.respuestas || {
+        inicio_semana: hPrev.has("A"),
+        clima: hPrev.has("C") ? "frio" : hPrev.has("T") ? "calido" : "templado",
+        oferta_carne: hPrev.has("B"),
+        equipo: hPrev.has("G") ? "falta_ayudante" : hPrev.has("L") ? "demora_urgente" : "normal",
+        restriccion: hPrev.has("W"),
+        hechos_extra: [...hPrev].filter((c) => !["A", "B", "C", "T", "G", "L", "W"].includes(c)),
+    };
+
     await fetch("/api/menu", { method: "DELETE" });
     estadoSistema.menuDelDia = null;
     try {
@@ -586,18 +626,213 @@ async function confirmarReemplazoMenu() {
     } catch (_) {}
     actualizarCabecera();
 
+    mostrarPanelEdicionCompleta(respPrev);
+}
+
+function crearOpcionRapida(campo, valor, activo, iconoSvg, texto) {
+    const activeClass = activo ? "active" : "";
+    const checkSvg = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+    return `
+        <button
+            type="button"
+            class="qe-choice-btn ${activeClass}"
+            data-campo="${campo}"
+            data-valor="${valor}"
+            onclick="seleccionarOpcionRapida(this, '${campo}', '${valor}')"
+        >
+            <span class="qe-choice-left">
+                ${iconoSvg}
+                <span>${texto}</span>
+            </span>
+            <span class="qe-choice-check">${activo ? checkSvg : ""}</span>
+        </button>
+    `;
+}
+
+function seleccionarOpcionRapida(btnEl, campo, valor) {
+    const panel = btnEl.closest(".quick-edit-panel");
+    if (!panel) return;
+    const checkSvg = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+    const hermanos = panel.querySelectorAll(`.qe-choice-btn[data-campo="${campo}"]`);
+    hermanos.forEach((b) => {
+        b.classList.remove("active");
+        const chk = b.querySelector(".qe-choice-check");
+        if (chk) chk.innerHTML = "";
+    });
+
+    btnEl.classList.add("active");
+    const chkActual = btnEl.querySelector(".qe-choice-check");
+    if (chkActual) chkActual.innerHTML = checkSvg;
+
+    if (campo === "inicio_semana") {
+        entrevista.respuestas.inicio_semana = valor === "true";
+    } else if (campo === "clima") {
+        entrevista.respuestas.clima = valor;
+    } else if (campo === "oferta_carne") {
+        entrevista.respuestas.oferta_carne = valor === "true";
+    } else if (campo === "equipo") {
+        entrevista.respuestas.equipo = valor;
+    } else if (campo === "restriccion") {
+        entrevista.respuestas.restriccion = valor === "true";
+    }
+}
+
+function mostrarPanelEdicionCompleta(respInicial) {
+    entrevista.activa = true;
+    entrevista.respuestas = {
+        inicio_semana: Boolean(respInicial.inicio_semana),
+        clima: respInicial.clima || "templado",
+        oferta_carne: Boolean(respInicial.oferta_carne),
+        equipo: respInicial.equipo || "normal",
+        restriccion: Boolean(respInicial.restriccion),
+        hechos_extra: Array.isArray(respInicial.hechos_extra) ? [...respInicial.hechos_extra] : [],
+    };
+
+    const r = entrevista.respuestas;
+
+    let extraHtml = "";
+    const codigosPers = Object.keys(estadoSistema.hechosPersonalizados || {});
+    if (codigosPers.length > 0) {
+        extraHtml += `
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">Extra</span>
+                    <span>Situaciones personalizadas aprendidas (marcá si alguna ocurre hoy):</span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+        `;
+        for (const cod of codigosPers) {
+            const desc = estadoSistema.hechosPersonalizados[cod];
+            const checkedAttr = r.hechos_extra.includes(cod) ? "checked" : "";
+            extraHtml += `
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.86rem;">
+                    <input type="checkbox" class="chk-hecho-aprendido-qe" value="${escaparHtml(cod)}" ${checkedAttr}>
+                    <span><b>${escaparHtml(cod)}</b>: ${escaparHtml(desc)}</span>
+                </label>
+            `;
+        }
+        extraHtml += `</div></div>`;
+    }
+
     agregarBurbuja(
         "bot",
         `
         <div class="section-heading">
-            <span class="svg-badge svg-badge-teal">${SVG.checkCircle}</span>
-            <span>Menú anterior eliminado de la pizarra</span>
+            <span class="svg-badge svg-badge-teal">${SVG.utensils}</span>
+            <span>Ajustar Condiciones para la Nueva Recomendación</span>
         </div>
-        <p style="margin-top:4px; color:#475569;">Iniciando el asistente de planificación para registrar las nuevas condiciones del día...</p>
+        <p style="margin-top:6px; color:#475569;">
+            Menú anterior eliminado. A continuación tenés <b>todas las preguntas en pantalla</b> con tu selección previa marcada: 
+            <b>cambiá únicamente las opciones que necesites</b> y presioná el botón para generar el nuevo menú.
+        </p>
+
+        <div class="quick-edit-panel">
+            <!-- Pregunta 1 -->
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">1 de 5</span>
+                    <span>¿En qué día de la semana estamos?</span>
+                </div>
+                <div class="qe-options-row">
+                    ${crearOpcionRapida("inicio_semana", "true", r.inicio_semana === true, SVG.calendar, "Lunes, Martes o Miércoles")}
+                    ${crearOpcionRapida("inicio_semana", "false", r.inicio_semana === false, SVG.calendar, "Jueves a Domingo")}
+                </div>
+            </div>
+
+            <!-- Pregunta 2 -->
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">2 de 5</span>
+                    <span>¿Cómo se presenta el clima en la jornada de hoy?</span>
+                </div>
+                <div class="qe-options-row">
+                    ${crearOpcionRapida("clima", "frio", r.clima === "frio", SVG.snow, "Clima Frío (alta demanda de olla)")}
+                    ${crearOpcionRapida("clima", "calido", r.clima === "calido", SVG.sun, "Clima Cálido / Verano")}
+                    ${crearOpcionRapida("clima", "templado", r.clima === "templado", SVG.cloud, "Templado / Estándar")}
+                </div>
+            </div>
+
+            <!-- Pregunta 3 -->
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">3 de 5</span>
+                    <span>¿Hay oferta de cortes de carne por pieza entera en el frigorífico?</span>
+                </div>
+                <div class="qe-options-row">
+                    ${crearOpcionRapida("oferta_carne", "true", r.oferta_carne === true, SVG.checkCircle, "Sí, hay oferta de pieza entera")}
+                    ${crearOpcionRapida("oferta_carne", "false", r.oferta_carne === false, SVG.xCircle, "No hay oferta hoy")}
+                </div>
+            </div>
+
+            <!-- Pregunta 4 -->
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">4 de 5</span>
+                    <span>¿Cuál es la disponibilidad del personal y tiempos en la cocina?</span>
+                </div>
+                <div class="qe-options-row">
+                    ${crearOpcionRapida("equipo", "normal", r.equipo === "normal", SVG.users, "Equipo completo (asistió la ayudante)")}
+                    ${crearOpcionRapida("equipo", "falta_ayudante", r.equipo === "falta_ayudante", SVG.alertTriangle, "La ayudante avisó que NO asiste")}
+                    ${crearOpcionRapida("equipo", "demora_urgente", r.equipo === "demora_urgente", SVG.clock, "Surgió una demora / imprevisto urgente")}
+                </div>
+            </div>
+
+            <!-- Pregunta 5 -->
+            <div class="qe-question-block">
+                <div class="qe-question-title">
+                    <span class="qe-step-badge">5 de 5</span>
+                    <span>¿Hay pedidos de clientes con restricciones alimentarias hoy?</span>
+                </div>
+                <div class="qe-options-row">
+                    ${crearOpcionRapida("restriccion", "true", r.restriccion === true, SVG.leaf, "Sí, hay cliente con restricción alimentaria")}
+                    ${crearOpcionRapida("restriccion", "false", r.restriccion === false, SVG.checkCircle, "No, sin restricciones hoy")}
+                </div>
+            </div>
+
+            ${extraHtml}
+
+            <button type="button" class="learn-submit-btn" onclick="confirmarPanelEdicionCompleta(this)">
+                ${SVG.sparkle}
+                <span>Generar Nueva Recomendación con estos Cambios</span>
+            </button>
+        </div>
         `
     );
+}
 
-    ejecutarPasoInicialEntrevista();
+async function confirmarPanelEdicionCompleta(btnEl) {
+    const panel = btnEl ? btnEl.closest(".quick-edit-panel") : document;
+    const checks = panel.querySelectorAll(".chk-hecho-aprendido-qe:checked");
+    const extras = [];
+    checks.forEach((c) => extras.push(c.value));
+    entrevista.respuestas.hechos_extra = extras;
+    entrevista.activa = false;
+
+    if (panel) {
+        panel.querySelectorAll("button, input").forEach((el) => {
+            el.disabled = true;
+            el.style.opacity = "0.75";
+            el.style.cursor = "default";
+        });
+    }
+
+    const r = entrevista.respuestas;
+    const resumenClima = { frio: "Frío", calido: "Cálido", templado: "Templado" }[r.clima] || r.clima;
+    const resumenEquipo = {
+        normal: "Equipo completo",
+        falta_ayudante: "Falta ayudante",
+        demora_urgente: "Demora urgente",
+    }[r.equipo] || r.equipo;
+
+    agregarBurbuja(
+        "user",
+        `Condiciones actualizadas: ${r.inicio_semana ? "Lun-Mié" : "Jue-Dom"} • Clima ${resumenClima} • ${
+            r.oferta_carne ? "Con oferta de carne" : "Sin oferta"
+        } • ${resumenEquipo} • ${r.restriccion ? "Con restricción" : "Sin restricción"}`
+    );
+
+    await enviarRespuestasAlMotor();
 }
 
 function cancelarNuevaRecomendacion() {
@@ -765,6 +1000,10 @@ async function responderPaso5(hayRestriccion, btnEl) {
             : "No hay restricciones alimentarias hoy"
     );
 
+    await enviarRespuestasAlMotor();
+}
+
+async function enviarRespuestasAlMotor() {
     try {
         const res = await fetch("/api/recomendar", {
             method: "POST",
@@ -1013,18 +1252,22 @@ async function guardarAprendizaje(btnEl) {
     });
 
     const data = await res.json();
+    if (data && data.regla && data.regla.id) {
+        // Quitar este ID de la lista de eliminados en localStorage para que nunca quede oculto
+        desmarcarReglaEliminadaLocal(data.regla.id);
+    }
     await sincronizarEstadoServidor();
 
     agregarBurbuja(
         "bot",
         `
-        <div class="section-heading"><span class="svg-badge svg-badge-success">${SVG.checkCircle}</span><span>Conocimiento aprendido e integrado al motor</span></div>
+        <div class="section-heading"><span class="svg-badge svg-badge-success">${SVG.checkCircle}</span><span>Conocimiento aprendido e integrado al motor y a motor.py</span></div>
         <div style="margin-top:8px;">
             • <b>Identificador de Regla:</b> <code>${escaparHtml(data.regla.id)}</code><br>
             • <b>Antecedente (SI):</b> <code>${escaparHtml(data.regla.condicion_codigo)}</code> (<i>${escaparHtml(data.regla.condicion_descripcion)}</i>)<br>
             • <b>Consecuente (ENTONCES):</b> Recomendar <b>${escaparHtml(data.regla.nombre_plato)}</b> (<i>${escaparHtml(data.regla.categoria)}</i>)
         </div>
-        <p style="margin-top:8px;">Ya se encuentra activo para las próximas ejecuciones de <b>1. Recomendar Menú</b>.</p>
+        <p style="margin-top:8px;">Ya quedó guardada en la <b>Base Aprendida (Opción 6)</b> y escrita como regla <code>@Rule</code> en <code>motor.py</code>.</p>
         `
     );
 }
@@ -1034,10 +1277,17 @@ async function borrarReglaAprendidaUI(reglaId) {
     try {
         await fetch(`/api/aprender/${encodeURIComponent(reglaId)}`, { method: "DELETE" });
     } catch (_) {}
+    try {
+        await fetch("/api/aprender/eliminar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: reglaId }),
+        });
+    } catch (_) {}
     await sincronizarEstadoServidor();
     agregarBurbuja(
         "bot",
-        `<div class="section-heading"><span class="svg-badge">${SVG.trash}</span><span>Regla aprendida <code>${escaparHtml(reglaId)}</code> eliminada</span></div>`
+        `<div class="section-heading"><span class="svg-badge">${SVG.trash}</span><span>Regla aprendida <code>${escaparHtml(reglaId)}</code> eliminada de la base y de motor.py</span></div>`
     );
     mostrarBaseAprendida();
 }

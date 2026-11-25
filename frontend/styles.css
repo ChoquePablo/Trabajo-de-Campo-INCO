@@ -832,6 +832,118 @@ html, body {
 }
 
 /* ========================================================
+   PANEL DE EDICIÓN RÁPIDA DE CONDICIONES (AL CAMBIAR MENÚ)
+   ======================================================== */
+.quick-edit-panel {
+    margin-top: 14px;
+    background: #f8fafc;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.qe-question-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--border-strong);
+}
+
+.qe-question-block:last-of-type {
+    border-bottom: none;
+    padding-bottom: 4px;
+}
+
+.qe-question-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.qe-step-badge {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border: 1px solid var(--primary-border);
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.qe-options-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.qe-choice-btn {
+    background: #ffffff;
+    border: 1.5px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    transition: all 0.15s ease;
+    text-align: left;
+}
+
+.qe-choice-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.qe-choice-btn svg {
+    flex-shrink: 0;
+}
+
+.qe-choice-btn:hover {
+    border-color: var(--primary);
+    color: var(--text-main);
+    background: #fffaf5;
+}
+
+.qe-choice-btn.active {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary-hover);
+    font-weight: 800;
+    box-shadow: 0 2px 6px rgba(234, 88, 12, 0.14);
+}
+
+.qe-choice-check {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: #ffffff;
+}
+
+.qe-choice-btn.active .qe-choice-check {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+}
+
+/* ========================================================
    BARRA INFERIOR DE COMANDOS (100% ANCHO COMPLETO)
    ======================================================== */
 .composer-area {

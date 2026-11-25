@@ -14,16 +14,17 @@ from motor import (
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 PORT = 8000
 
-# Estado en memoria del menú del día activo
+# Estado en memoria del menú del día activo y rotación de platos usados (como en ramaAriel)
 ESTADO_SERVIDOR = {
     "menu_del_dia": None,
+    "platos_usados": [],
 }
 
 
 def procesar_recomendacion(datos):
     """
     Conecta las respuestas del chatbot HTML/JS con el motor de inferencia Experta
-    en motor.py y devuelve el menú de platos concretos y su trazabilidad.
+    en motor.py y devuelve el menú de platos decididos por las reglas R33-R43 y su trazabilidad.
     """
     hechos = []
 
@@ -46,35 +47,50 @@ def procesar_recomendacion(datos):
         if hx not in hechos:
             hechos.append(hx)
 
-    # Ejecutar motor de inferencia Experta + reglas aprendidas
+    # Ejecutar motor de inferencia Experta (R1-R31 + Reglas de Platos R33-R43 + Reglas Aprendidas)
     motor = AsesorVirtualGastronomico()
     motor.reset()
     for cod in hechos:
         motor.declare(Hecho(codigo=cod))
+    motor.cargar_platos_usados(ESTADO_SERVIDOR["platos_usados"])
     motor.run()
+
+    # Si todos los platos posibles para esta condición ya fueron usados en la rotación,
+    # reiniciar el ciclo de rotación de platos usados y volver a correr para que no caiga siempre en el comodín
+    if (
+        len(motor.menus_sugeridos) == 1
+        and motor.menus_sugeridos[0]["regla"] == "R43"
+        and ESTADO_SERVIDOR["platos_usados"]
+        and any(c in hechos for c in ("C", "T", "G", "L", "A", "B"))
+    ):
+        ESTADO_SERVIDOR["platos_usados"] = []
+        motor.reset()
+        for cod in hechos:
+            motor.declare(Hecho(codigo=cod))
+        motor.run()
+
+    # Registrar el plato principal elegido hoy en platos_usados para rotar en la siguiente consulta (como en ramaAriel)
+    for m in motor.menus_sugeridos:
+        if m.get("es_principal") and m["plato"] not in ESTADO_SERVIDOR["platos_usados"]:
+            ESTADO_SERVIDOR["platos_usados"].append(m["plato"])
 
     hechos_fin = motor.obtener_hechos_finales()
     propuesta = construir_menu_recomendado(
         hechos_fin,
         motor.platos_aprendidos_disparados,
         hechos_iniciales=hechos,
+        menus_reglas=motor.menus_sugeridos,
     )
 
-    if not propuesta["platos"]:
-        propuesta["platos"].append(
-            {
-                "nombre": "Pastel de Papas Casero / Pollo al Horno con Papas",
-                "icono": "utensils",
-                "categoria": "Menú Clásico del Día (Operación Normal)",
-                "tiempo": "45 min",
-                "rendimiento": "35 viandas estándar",
-                "descripcion": "Jornada sin alertas climáticas ni falta de personal: ideal para el menú clásico de rotación diaria.",
-                "tip": "Aprovechar que el equipo está completo para adelantar producción de mañana.",
-                "regla_origen": "Base Estándar",
-            }
-        )
-
     resultado = {
+        "respuestas": {
+            "inicio_semana": bool(datos.get("inicio_semana")),
+            "clima": datos.get("clima", "templado"),
+            "oferta_carne": bool(datos.get("oferta_carne")),
+            "equipo": datos.get("equipo", "normal"),
+            "restriccion": bool(datos.get("restriccion")),
+            "hechos_extra": list(datos.get("hechos_extra", [])),
+        },
         "hechos_iniciales": hechos,
         "hechos_finales": hechos_fin,
         "traza": list(motor.traza),
@@ -84,6 +100,7 @@ def procesar_recomendacion(datos):
         "tips_operativos": propuesta["tips_operativos"],
         "recomendaciones_experta": propuesta["recomendaciones_experta"],
         "contingencia_automatica": ("L" in hechos_fin and "L" not in hechos),
+        "platos_usados_rotacion": list(ESTADO_SERVIDOR["platos_usados"]),
     }
     ESTADO_SERVIDOR["menu_del_dia"] = resultado
     return resultado
@@ -166,6 +183,11 @@ class ChatbotHTTPHandler(BaseHTTPRequestHandler):
                 consejo_cocina=datos.get("consejo_cocina", ""),
             )
             self._enviar_json({"ok": True, "regla": nueva_regla})
+        elif ruta_limpia == "/api/aprender/eliminar":
+            regla_id = (datos.get("id") or "").strip()
+            if regla_id:
+                eliminar_regla_aprendida(regla_id)
+            self._enviar_json({"ok": True, "eliminada": regla_id})
         else:
             self.send_error(404, "Endpoint no encontrado")
 
